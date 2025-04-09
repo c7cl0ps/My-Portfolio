@@ -1,2 +1,2 @@
 # My-Portfolio
-Personal Cybersecurity and Computer Science Projects
+Personal Cybersecurity and Technical Coding Projects
