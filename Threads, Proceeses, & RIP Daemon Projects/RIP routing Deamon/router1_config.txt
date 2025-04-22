@@ -1,3 +1,0 @@
-router-id 1
-input-ports 6010, 6011
-outputs 6020-1-2, 6030-2-3
