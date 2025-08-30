@@ -1,0 +1,65 @@
+# vt_bulk.ps1  (PowerShell 5.1+ compatible)
+#
+$env:VT_API_KEY = "YOUR_API_KEY_HERE"
+
+$out = @()
+Get-Content hashes.txt | ForEach-Object {
+    $hash = ($_ -split '\s+')[0]
+    if ($hash.Length -ne 64) { return }
+
+    try {
+        $r = Invoke-RestMethod -Uri "https://www.virustotal.com/api/v3/files/$hash" `
+                               -Headers @{ "x-apikey" = $env:VT_API_KEY } `
+                               -ErrorAction Stop
+
+        $attr   = $r.data.attributes
+        $stats  = $attr.last_analysis_stats
+        $detect = "$($stats.malicious)/$($stats.malicious + $stats.undetected)"
+
+        # Threat level
+        if ($stats.malicious -ge 5)      { $level = "High" }
+        elseif ($stats.malicious -ge 1)  { $level = "Medium" }
+        elseif ($stats.suspicious -ge 1) { $level = "Low" }
+        else                             { $level = "Clean" }
+
+        # Safe fall-backs for missing data
+        $cats   = if ($attr.popular_threat_classification.suggested_threat_label) {
+                      $attr.popular_threat_classification.suggested_threat_label
+                  } else { "N/A" }
+
+        $family = if ($attr.popular_threat_classification.popular_threat_category) {
+                      ($attr.popular_threat_classification.popular_threat_category |
+                       ForEach-Object { $_.value }) -join ';'
+                  } else { "N/A" }
+
+        $fileType = if ($attr.type_description) { $attr.type_description } else { "N/A" }
+        $magic    = if ($attr.magic) { $attr.magic } else { "N/A" }
+
+        # Unix epoch -> DateTime
+        $firstWild = if ($attr.first_submission_date) {
+                         [datetimeoffset]::FromUnixTimeSeconds($attr.first_submission_date).DateTime
+                     } else { "N/A" }
+
+        $lastWild = if ($attr.last_submission_date) {
+                        [datetimeoffset]::FromUnixTimeSeconds($attr.last_submission_date).DateTime
+                    } else { "N/A" }
+
+    } catch {
+        $detect = $cats = $family = $fileType = $magic = $firstWild = $lastWild = "Error/NotFound"
+        $level  = "Error/NotFound"
+    }
+
+    $out += [PSCustomObject]@{
+        SHA256        = $hash
+        ThreatLevel   = $level
+        DetectionRatio = $detect
+        Categories    = $cats
+        FamilyLabel   = $family
+        FileType      = $fileType
+        Magic         = $magic
+        FirstSeenWild = $firstWild
+        LastSeenWild  = $lastWild
+    }
+}
+
+$out | Export-Csv vt_enriched.csv -NoTypeInformation
